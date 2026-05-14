@@ -16,10 +16,10 @@ cli_version: ">=1.0.6"
 
 1. **安装检查**：执行 `dws --version`，确认版本 >= 1.0.6
 2. **授权检查**：执行 `dws auth status`，确认已登录
-3. **环境变量**：connector 运行时会自动注入以下环境变量，dws CLI 会自动读取，无需手动设置：
-   - `DWS_CHANNEL=openclaw` — 标识调用来源为 openclaw connector
-   - `DWS_CLIENT_ID=<clientId>` — 当前钉钉应用的 Client ID
-   - `DWS_CLIENT_SECRET=<clientSecret>` — 当前钉钉应用的 Client Secret
+3. **环境变量（信任边界）**：
+   - 连接器会把 **`DWS_CLIENT_ID`**、**`DINGTALK_AGENT`** 放进网关进程的 `process.env`（不含 Secret），便于 agent 用 `echo $DWS_CLIENT_ID` 核对当前机器人身份。
+   - **`DWS_CLIENT_SECRET` 不会**写入网关全局环境；仅当集成层用 **`getDwsSpawnEnv(accountId)`** 生成 **专用于启动 `dws` 子进程** 的 `env` 对象时才会出现在**该子进程**的环境里（与普通 headless 下 `export ... && dws` 等价）。不要把该对象合并进无关 shell/exec。
+   - 日常交互授权仍以 **`dws auth login`** 写入的本地 OAuth 凭证为主；依赖 Secret 的用法仅限上述受控 spawn 路径。
 
 如果 CLI 未安装或未授权，请引导用户完成对应操作（详见下方错误处理章节）。
 

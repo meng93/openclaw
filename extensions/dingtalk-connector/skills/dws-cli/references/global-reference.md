@@ -98,7 +98,7 @@ dws recovery finalize --event-id <event_id> --outcome recovered|failed|handoff -
 |------|------|
 | `DWS_CONFIG_DIR` | 覆盖默认配置目录 |
 | `DWS_SERVERS_URL` | 自定义服务发现端点 |
-| `DWS_CLIENT_ID` | 覆盖 OAuth Client ID (DingTalk AppKey) |
-| `DWS_CLIENT_SECRET` | 覆盖 OAuth Client Secret (DingTalk AppSecret) |
+| `DWS_CLIENT_ID` | 覆盖 OAuth Client ID (DingTalk AppKey)；网关中可由连接器写入 **非 Secret** 身份 |
+| `DWS_CLIENT_SECRET` | 覆盖 OAuth Client Secret；**不应**依赖其在网关全局 `process.env` 中可见；仅在通过 **`getDwsSpawnEnv`** 等方式为 **`dws` 子进程** 构造 env 时使用 |
 
-凭证优先级: `--token` > `DWS_CLIENT_ID`/`DWS_CLIENT_SECRET` > OAuth 加密存储 (.data)
+凭证优先级: `--token` > `DWS_CLIENT_ID`/`DWS_CLIENT_SECRET`（仅在子进程 env 中生效时）> OAuth 加密存储 (.data)

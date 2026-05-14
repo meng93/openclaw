@@ -1,5 +1,6 @@
 import type { ChannelPlugin, ClawdbotConfig } from "openclaw/plugin-sdk";
 import { buildChannelConfigSchema } from "openclaw/plugin-sdk/core";
+import process from "node:process";
 import {
   resolveDingtalkAccount,
   resolveDingtalkCredentials,
@@ -32,13 +33,6 @@ import { createLogger } from "./utils/logger.ts";
 export const CHANNEL_ID = "dingtalk-connector" as const;
 
 /**
- * Indirect reference to avoid security scanner false positive.
- * The scanner flags env access + network-send in the same file as
- * "credential harvesting". Using string concatenation breaks the pattern.
- */
-const _env = (globalThis as Record<string, unknown>)["proc" + "ess"] as NodeJS.Process;
-
-/**
  * Per-account holder for DWS credentials. Stored in module scope instead of
  * the global env so that child processes (e.g. Shell Executor) cannot read
  * the clientSecret via `env` / `printenv` commands.
@@ -50,12 +44,15 @@ const _env = (globalThis as Record<string, unknown>)["proc" + "ess"] as NodeJS.P
 const dwsCredentialsByAccount = new Map<string, { clientId: string; clientSecret: string }>();
 
 /**
- * Returns environment variables for spawning dws CLI.
- * Credentials are injected locally — they are NOT in process.env.
+ * Environment snapshot for spawning the trusted `dws` CLI only.
  *
- * @param accountId - The account whose credentials should be injected.
- *   When omitted, falls back to the first (or only) stored entry for
- *   backward compatibility with single-account setups.
+ * Trust boundary:
+ * - `DWS_CLIENT_SECRET` is never written to the gateway `process.env`.
+ * - Secrets live in memory (`dwsCredentialsByAccount`) until this map is
+ *   passed as `child_process` spawn `env`. Any process started with that env
+ *   can read the secret (same exposure as `dws auth` with env-based credentials).
+ * - Do not merge this object into arbitrary shells or unrelated subprocesses;
+ *   use it only when argv is the `dws` binary (or a documented wrapper).
  */
 export function getDwsSpawnEnv(accountId?: string): Record<string, string> {
   const creds = accountId
@@ -63,7 +60,7 @@ export function getDwsSpawnEnv(accountId?: string): Record<string, string> {
     : dwsCredentialsByAccount.values().next().value;
 
   return {
-    ...(_env.env as Record<string, string>),
+    ...(process.env as Record<string, string>),
     DINGTALK_AGENT: "DING_DWS_CLAW",
     ...(creds?.clientId && { DWS_CLIENT_ID: creds.clientId }),
     ...(creds?.clientSecret && { DWS_CLIENT_SECRET: creds.clientSecret }),
@@ -503,10 +500,8 @@ export const dingtalkPlugin: ChannelPlugin<ResolvedDingtalkAccount> = {
       }
 
       // Set DINGTALK_AGENT to identify the calling context (non-sensitive).
-      // DWS credentials are stored in a per-account Map instead of the global
-      // env to prevent child processes (e.g. Shell Executor) from reading the
-      // clientSecret via `env` / `printenv` commands.
-      _env.env.DINGTALK_AGENT = "DING_DWS_CLAW";
+      // App secret stays off global env; see `getDwsSpawnEnv` for dws-only spawn env.
+      process.env.DINGTALK_AGENT = "DING_DWS_CLAW";
       if (account.clientId && account.clientSecret) {
         dwsCredentialsByAccount.set(ctx.accountId, {
           clientId: String(account.clientId),
@@ -517,7 +512,7 @@ export const dingtalkPlugin: ChannelPlugin<ResolvedDingtalkAccount> = {
         // into dws CLI commands for correct bot identity isolation.
         // Note: in multi-bot setups the last-started bot's clientId wins,
         // but the skill prompt instructs the AI to always read & pass it.
-        _env.env.DWS_CLIENT_ID = String(account.clientId);
+        process.env.DWS_CLIENT_ID = String(account.clientId);
       }
 
       ctx.setStatus({ accountId: ctx.accountId, port: null });
